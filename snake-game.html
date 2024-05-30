@@ -1,0 +1,113 @@
+<canvas
+    id="gc"
+    height="600"
+    width="600"
+    style="margin: auto; display: block"
+></canvas>
+<script type="text/javascript">
+    window.onload = function () {
+        canvas = document.getElementById("gc");
+        context = canvas.getContext("2d");
+        document.addEventListener("keydown", keyPush);
+        setInterval(game, 40);
+    };
+
+    let movX = 0;
+    let movY = 0;
+    let prizeX = (prizeY = 30);
+    let headX = (headY = 15);
+    const side = 40;
+    const cell = 15;
+    let sElements = [];
+    let sTail = 6;
+    let color = "blue";
+
+    function game() {
+        headX += movX;
+        headY += movY;
+
+        if (headX > side - 1) {
+            headX = 0;
+        }
+        if (headX < 0) {
+            headX = side - 1;
+        }
+        if (headY > side - 1) {
+            headY = 0;
+        }
+        if (headY < 0) {
+            headY = side - 1;
+        }
+
+        context.fillStyle = "black";
+        context.fillRect(0, 0, canvas.height, canvas.width);
+
+        context.fillStyle = "white";
+        context.fillRect(3, 3, canvas.height - 6, canvas.width - 6);
+
+        for (let i = 0; i < sElements.length; i++) {
+            context.fillStyle = sElements[i].c;
+            context.fillRect(
+                sElements[i].x * cell,
+                sElements[i].y * cell,
+                cell - 2,
+                cell - 2
+            );
+            if (
+                sElements[i].x == headX &&
+                sElements[i].y == headY &&
+                (movX != 0 || movY != 0)
+            ) {
+                color = getRandomRgb();
+                sTail = 6;
+            }
+        }
+
+        sElements.push({ x: headX, y: headY, c: color });
+        while (sElements.length > sTail) {
+            sElements.shift();
+        }
+
+        if (headX == prizeX && headY == prizeY) {
+            prizeX = Math.floor(Math.random() * side);
+            prizeY = Math.floor(Math.random() * side);
+            sTail++;
+        }
+
+        context.fillStyle = "darkorange";
+        context.fillRect(prizeX * cell, prizeY * cell, cell - 2, cell - 2);
+    }
+
+    function getRandomRgb() {
+        let num = Math.round(0xcccccc * Math.random());
+        let r = num >> 16;
+        let g = (num >> 8) & 255;
+        let b = num & 255;
+        return "rgb(" + r + ", " + g + ", " + b + ")";
+    }
+
+    function keyPush(event) {
+        switch (event.keyCode) {
+            case 37:
+                if (movX != 1) movX = -1;
+                movY = 0;
+                break;
+            case 38:
+                if (movY != 1) movX = 0;
+                movY = -1;
+                break;
+            case 39:
+                if (movX != -1) movX = 1;
+                movY = 0;
+                break;
+            case 40:
+                if (movY != -1) movX = 0;
+                movY = 1;
+                break;
+            case 32:
+                movX = 0;
+                movY = 0;
+                break;
+        }
+    }
+</script>
