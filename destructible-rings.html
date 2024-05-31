@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Rings with Destructible Sections</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+<script type="importmap">
+  {
+    "imports": {
+    	"three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/three.module.min.js"
+    }
+  }
+</script>  
+<script type="module">
+    import * as THREE from 'three';
+
+    // Set up the scene, camera, and renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000); // Black background
+
+    const initialWidth = window.innerWidth;
+    const initialHeight = window.innerHeight;
+
+    const camera = new THREE.OrthographicCamera(
+        initialWidth / -2, initialWidth / 2,
+        initialHeight / 2, initialHeight / -2,
+        1, 1000
+    );
+    camera.position.z = 5;
+
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(initialWidth, initialHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Calculate the largest ring's outer radius (80% of the shortest screen side)
+    const shortestSide = Math.min(initialWidth, initialHeight);
+    const largestOuterRadius = (shortestSide * 0.8) / 2;
+
+    // Create and add ring sections to the scene
+    const ringSections = [];
+    const sectionCount = Math.floor(2 * Math.PI * largestOuterRadius / 40); // Length of each section same as diameter of the ball
+    const sectionThickness = 0.025 * largestOuterRadius; // Half the previous thickness
+
+    function createRingSection(innerRadius, outerRadius, startAngle, angle) {
+        const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 2, 1, startAngle, angle);
+        const material = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+        const section = new THREE.Mesh(geometry, material);
+        section.userData = { innerRadius, outerRadius, startAngle, angle };
+        return section;
+    }
+
+    for (let i = 0; i < 4; i++) {
+        const outerRadius = largestOuterRadius * (1 - (i * 0.2)); // Decrease radius for inner rings
+        const innerRadius = outerRadius - sectionThickness; // Uniform thickness
+        const sectionAngle = (2 * Math.PI) / sectionCount;
+
+        for (let j = 0; j < sectionCount; j++) {
+            const section = createRingSection(innerRadius, outerRadius, sectionAngle * j, sectionAngle);
+            section.position.set(0, 0, 0);
+            section.userData.ringIndex = i; // Store ring index for destruction rules
+            ringSections.push(section);
+            scene.add(section);
+        }
+    }
+
+    // Create the balls
+    const ballRadius = 10;
+    const ballMaterial = new THREE.MeshBasicMaterial({ color: 0x90EE90 }); // Light green color
+
+    function createBall(existingBall = null) {
+        const ballGeometry = new THREE.CircleGeometry(ballRadius, 32);
+        const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+        let position;
+        do {
+            position = new THREE.Vector2(Math.random() * 40 - 20, Math.random() * 40 - 20);
+        } while (existingBall && position.distanceTo(new THREE.Vector2(existingBall.position.x, existingBall.position.y)) < ballRadius * 4);
+        ball.position.set(position.x, position.y, 0);
+        ball.userData = {
+            direction: new THREE.Vector2(Math.random() * 2 - 1, Math.random() * 2 - 1).normalize(),
+            speed: 4 // 2 times faster
+        };
+        scene.add(ball);
+        return ball;
+    }
+
+    const balls = [createBall()];
+    balls.push(createBall(balls[0]));
+   
+    // Initialize currentRingIndex to the innermost ring
+    let currentRingIndex = 3;
+
+    // Check if all sections of the given ring index are destroyed
+    function areAllSectionsDestroyed(ringIndex) {
+        return ringSections.every(section => section.userData.ringIndex !== ringIndex);
+    }
+
+    // Check for ball collisions with ring sections
+    function checkCollisions() {
+        balls.forEach(ball => {
+            const ballPos = new THREE.Vector2(ball.position.x, ball.position.y);
+
+            for (let i = ringSections.length - 1; i >= 0; i--) {
+                const section = ringSections[i];
+                const { innerRadius, outerRadius, startAngle, angle, ringIndex } = section.userData;
+                const dist = ballPos.length();
+                const angleToBall = Math.atan2(ballPos.y, ballPos.x);
+                const angleNormalized = (angleToBall + 2 * Math.PI) % (2 * Math.PI);
+
+                if (dist + ballRadius >= innerRadius && dist - ballRadius <= outerRadius && angleNormalized >= startAngle && angleNormalized <= startAngle + angle) {
+                    if (ringIndex === currentRingIndex) {
+                        // Remove the ring section and ricochet the ball
+                        scene.remove(section);
+                        ringSections.splice(i, 1);
+
+                        // Calculate the reflection vector
+                        const normal = new THREE.Vector2(Math.cos(angleToBall), Math.sin(angleToBall)).normalize();
+                        const dotProduct = ball.userData.direction.dot(normal);
+                        ball.userData.direction.sub(normal.multiplyScalar(2 * dotProduct)).normalize();
+
+                        // Add some randomness to the ball direction
+                        ball.userData.direction.x += (Math.random() - 0.5) * 0.1;
+                        ball.userData.direction.y += (Math.random() - 0.5) * 0.1;
+                        ball.userData.direction.normalize();
+
+                        break;
+                    } else {
+                        // Bounce the ball off the section
+                        const normal = new THREE.Vector2(Math.cos(angleToBall), Math.sin(angleToBall)).normalize();
+                        const dotProduct = ball.userData.direction.dot(normal);
+                        ball.userData.direction.sub(normal.multiplyScalar(2 * dotProduct)).normalize();
+                        ball.userData.direction.x += (Math.random() - 0.5) * 0.1;
+                        ball.userData.direction.y += (Math.random() - 0.5) * 0.1;
+                        ball.userData.direction.normalize();
+                    }
+                }
+            }
+        });
+
+        // Update currentRingIndex if the current ring is completely destroyed
+        if (areAllSectionsDestroyed(currentRingIndex)) {
+            currentRingIndex--;
+            balls.push(createBall())
+        }
+    }
+
+    // Check for collisions between balls
+    function checkBallCollisions() {
+        for (let i = 0; i < balls.length; i++) {
+            for (let j = i + 1; j < balls.length; j++) {
+                const ball1 = balls[i];
+                const ball2 = balls[j];
+                const pos1 = new THREE.Vector2(ball1.position.x, ball1.position.y);
+                const pos2 = new THREE.Vector2(ball2.position.x, ball2.position.y);
+                const distance = pos1.distanceTo(pos2);
+
+                if (distance <= ballRadius * 2) {
+                    // Simple elastic collision response
+                    const direction1 = ball1.userData.direction;
+                    const direction2 = ball2.userData.direction;
+                    ball1.userData.direction = direction2.clone().normalize();
+                    ball2.userData.direction = direction1.clone().normalize();
+                }
+            }
+        }
+    }
+
+    // Pause simulation on space bar press
+    let isPaused = false;
+    window.addEventListener('keydown', function(event) {
+        if (event.code === 'Space') {
+            isPaused = !isPaused;
+        }
+    });
+
+    // Render loop with frame rate limit
+    let lastFrameTime = 0;
+    const frameRate = 60;
+    const frameDuration = 1000 / frameRate;
+
+    function animate(timestamp) {
+        requestAnimationFrame(animate);
+
+        if (isPaused) {
+            return;
+        }
+
+        if (timestamp - lastFrameTime < frameDuration) {
+            return;
+        }
+        lastFrameTime = timestamp;
+
+        // Move the balls
+        balls.forEach(ball => {
+            ball.position.x += ball.userData.speed * ball.userData.direction.x;
+            ball.position.y += ball.userData.speed * ball.userData.direction.y;
+        });
+
+        // Check for collisions
+        checkCollisions();
+        checkBallCollisions();
+
+        // Bounce off the walls
+        balls.forEach(ball => {
+            if (ball.position.x - ballRadius < initialWidth / -2 || ball.position.x + ballRadius > initialWidth / 2) {
+                ball.userData.direction.x *= -1;
+            }
+            if (ball.position.y - ballRadius < initialHeight / -2 || ball.position.y + ballRadius > initialHeight / 2) {
+                ball.userData.direction.y *= -1;
+            }
+        });
+
+        renderer.render(scene, camera);
+    }
+    animate();
+</script>
+</body>
+</html>
