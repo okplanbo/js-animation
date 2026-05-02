@@ -5,214 +5,379 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Three.js Rings with Destructible Sections</title>
     <style>
-        body { margin: 0; }
+        * { box-sizing: border-box; }
+        body { margin: 0; overflow: hidden; background: #000; }
         canvas { display: block; }
+
+        #controls {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 14px 16px;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            width: 180px;
+            user-select: none;
+            z-index: 10;
+        }
+
+        #controls h3 {
+            margin: 0 0 12px 0;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: rgba(255,255,255,0.4);
+            font-weight: normal;
+        }
+
+        .control-row {
+            margin-bottom: 12px;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            color: rgba(255,255,255,0.8);
+        }
+
+        .control-value {
+            color: #90EE90;
+            font-weight: bold;
+            min-width: 28px;
+            text-align: right;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 2px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #90EE90;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.3);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #90EE90;
+            cursor: pointer;
+            border: none;
+        }
+
+        .divider {
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+            margin: 12px 0;
+        }
+
+        .hint {
+            font-size: 9px;
+            color: rgba(255,255,255,0.25);
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        #restart-btn {
+            width: 100%;
+            padding: 6px;
+            background: rgba(144,238,144,0.1);
+            border: 1px solid rgba(144,238,144,0.3);
+            border-radius: 5px;
+            color: #90EE90;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        #restart-btn:hover {
+            background: rgba(144,238,144,0.2);
+            border-color: rgba(144,238,144,0.6);
+        }
     </style>
 </head>
 <body>
+
+<div id="controls">
+    <h3>Controls</h3>
+
+    <div class="control-row">
+        <div class="control-label">
+            <span>Speed</span>
+            <span class="control-value" id="speed-val">1×</span>
+        </div>
+        <input type="range" id="speed-slider" min="1" max="4" step="0.5" value="1">
+    </div>
+
+    <div class="control-row">
+        <div class="control-label">
+            <span>Start balls</span>
+            <span class="control-value" id="balls-val">2</span>
+        </div>
+        <input type="range" id="balls-slider" min="1" max="5" step="1" value="2">
+    </div>
+
+    <button id="restart-btn">↺ Restart</button>
+    <div class="hint">Space to pause</div>
+</div>
+
 <script type="importmap">
   {
     "imports": {
-    	"three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/three.module.min.js"
+      "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.164.1/three.module.min.js"
     }
   }
-</script>  
+</script>
 <script type="module">
     import * as THREE from 'three';
 
-    // Set up the scene, camera, and renderer
+    // ── Config (driven by sliders) ──────────────────────────────────────────
+    let BASE_SPEED    = 4;      // base px/frame (multiplier applied on top)
+    let speedMult     = 1;
+    let initialBalls  = 2;
+
+    // ── Slider wiring ───────────────────────────────────────────────────────
+    const speedSlider = document.getElementById('speed-slider');
+    const ballsSlider = document.getElementById('balls-slider');
+    const speedVal    = document.getElementById('speed-val');
+    const ballsVal    = document.getElementById('balls-val');
+
+    speedSlider.addEventListener('input', () => {
+        speedMult = parseFloat(speedSlider.value);
+        speedVal.textContent = speedMult + '×';
+        balls.forEach(b => { b.userData.speed = BASE_SPEED * speedMult; });
+    });
+
+    ballsSlider.addEventListener('input', () => {
+        initialBalls = parseInt(ballsSlider.value);
+        ballsVal.textContent = initialBalls;
+    });
+
+    document.getElementById('restart-btn').addEventListener('click', restartGame);
+
+    // ── Renderer & scene ────────────────────────────────────────────────────
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000); // Black background
+    scene.background = new THREE.Color(0x000000);
 
-    const initialWidth = window.innerWidth;
-    const initialHeight = window.innerHeight;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
 
-    const camera = new THREE.OrthographicCamera(
-        initialWidth / -2, initialWidth / 2,
-        initialHeight / 2, initialHeight / -2,
-        1, 1000
-    );
+    const camera = new THREE.OrthographicCamera(W / -2, W / 2, H / 2, H / -2, 1, 1000);
     camera.position.z = 5;
 
-    const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(initialWidth, initialHeight);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(window.devicePixelRatio);   // crisp on HiDPI screens
     document.body.appendChild(renderer.domElement);
 
-    // Calculate the largest ring's outer radius (80% of the shortest screen side)
-    const shortestSide = Math.min(initialWidth, initialHeight);
+    // ── Ring geometry constants ─────────────────────────────────────────────
+    const shortestSide      = Math.min(W, H);
     const largestOuterRadius = (shortestSide * 0.8) / 2;
+    const ballRadius         = 10;
+    const sectionCount       = Math.floor(2 * Math.PI * largestOuterRadius / (ballRadius * 2));
+    const sectionThickness   = 0.025 * largestOuterRadius;
+    const RING_COUNT         = 4;
 
-    // Create and add ring sections to the scene
-    const ringSections = [];
-    const sectionCount = Math.floor(2 * Math.PI * largestOuterRadius / 40); // Length of each section same as diameter of the ball
-    const sectionThickness = 0.025 * largestOuterRadius; // Half the previous thickness
+    // ── State ───────────────────────────────────────────────────────────────
+    let ringSections     = [];
+    let balls            = [];
+    let currentRingIndex = RING_COUNT - 1;
+    let isPaused         = false;
 
+    // ── Ring helpers ────────────────────────────────────────────────────────
     function createRingSection(innerRadius, outerRadius, startAngle, angle) {
-        const geometry = new THREE.RingGeometry(innerRadius, outerRadius, 2, 1, startAngle, angle);
+        // Use more radial segments for smoother arc edges
+        const segments = Math.max(8, Math.ceil(angle / (Math.PI / 60)));
+        const geometry = new THREE.RingGeometry(innerRadius, outerRadius, segments, 1, startAngle, angle);
         const material = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-        const section = new THREE.Mesh(geometry, material);
+        const section  = new THREE.Mesh(geometry, material);
         section.userData = { innerRadius, outerRadius, startAngle, angle };
         return section;
     }
 
-    for (let i = 0; i < 4; i++) {
-        const outerRadius = largestOuterRadius * (1 - (i * 0.2)); // Decrease radius for inner rings
-        const innerRadius = outerRadius - sectionThickness; // Uniform thickness
+    function buildRings() {
         const sectionAngle = (2 * Math.PI) / sectionCount;
-
-        for (let j = 0; j < sectionCount; j++) {
-            const section = createRingSection(innerRadius, outerRadius, sectionAngle * j, sectionAngle);
-            section.position.set(0, 0, 0);
-            section.userData.ringIndex = i; // Store ring index for destruction rules
-            ringSections.push(section);
-            scene.add(section);
+        for (let i = 0; i < RING_COUNT; i++) {
+            const outerRadius = largestOuterRadius * (1 - i * 0.2);
+            const innerRadius = outerRadius - sectionThickness;
+            for (let j = 0; j < sectionCount; j++) {
+                const section = createRingSection(innerRadius, outerRadius, sectionAngle * j, sectionAngle);
+                section.position.set(0, 0, 0);
+                section.userData.ringIndex = i;
+                ringSections.push(section);
+                scene.add(section);
+            }
         }
     }
 
-    // Create the balls
-    const ballRadius = 10;
-    const ballMaterial = new THREE.MeshBasicMaterial({ color: 0x90EE90 }); // Light green color
+    // ── Ball helpers ────────────────────────────────────────────────────────
+    const ballMaterial = new THREE.MeshBasicMaterial({ color: 0x90EE90 });
 
-    function createBall(existingBall = null) {
-        const ballGeometry = new THREE.CircleGeometry(ballRadius, 32);
-        const ball = new THREE.Mesh(ballGeometry, ballMaterial);
-        let position;
+    function createBall(existingBalls = []) {
+        const geo  = new THREE.CircleGeometry(ballRadius, 48);   // 48 segs → smooth circle
+        const ball = new THREE.Mesh(geo, ballMaterial);
+
+        let pos;
+        let attempts = 0;
         do {
-            position = new THREE.Vector2(Math.random() * 40 - 20, Math.random() * 40 - 20);
-        } while (existingBall && position.distanceTo(new THREE.Vector2(existingBall.position.x, existingBall.position.y)) < ballRadius * 4);
-        ball.position.set(position.x, position.y, 0);
+            pos = new THREE.Vector2(Math.random() * 40 - 20, Math.random() * 40 - 20);
+            attempts++;
+        } while (
+            attempts < 50 &&
+            existingBalls.some(b =>
+                pos.distanceTo(new THREE.Vector2(b.position.x, b.position.y)) < ballRadius * 4
+            )
+        );
+
+        ball.position.set(pos.x, pos.y, 0);
         ball.userData = {
             direction: new THREE.Vector2(Math.random() * 2 - 1, Math.random() * 2 - 1).normalize(),
-            speed: 4 // 2 times faster
+            speed:     BASE_SPEED * speedMult
         };
         scene.add(ball);
         return ball;
     }
 
-    const balls = [createBall()];
-    balls.push(createBall(balls[0]));
-   
-    // Initialize currentRingIndex to the innermost ring
-    let currentRingIndex = 3;
-
-    // Check if all sections of the given ring index are destroyed
+    // ── Collision helpers ───────────────────────────────────────────────────
     function areAllSectionsDestroyed(ringIndex) {
-        return ringSections.every(section => section.userData.ringIndex !== ringIndex);
+        return ringSections.every(s => s.userData.ringIndex !== ringIndex);
     }
 
-    // Check for ball collisions with ring sections
     function checkCollisions() {
         balls.forEach(ball => {
-            const ballPos = new THREE.Vector2(ball.position.x, ball.position.y);
+            const ballPos  = new THREE.Vector2(ball.position.x, ball.position.y);
+            const dist     = ballPos.length();
+            const angleToB = Math.atan2(ballPos.y, ballPos.x);
+            const angleNorm = (angleToB + 2 * Math.PI) % (2 * Math.PI);
 
             for (let i = ringSections.length - 1; i >= 0; i--) {
                 const section = ringSections[i];
                 const { innerRadius, outerRadius, startAngle, angle, ringIndex } = section.userData;
-                const dist = ballPos.length();
-                const angleToBall = Math.atan2(ballPos.y, ballPos.x);
-                const angleNormalized = (angleToBall + 2 * Math.PI) % (2 * Math.PI);
 
-                if (dist + ballRadius >= innerRadius && dist - ballRadius <= outerRadius && angleNormalized >= startAngle && angleNormalized <= startAngle + angle) {
+                if (
+                    dist + ballRadius >= innerRadius &&
+                    dist - ballRadius <= outerRadius &&
+                    angleNorm >= startAngle &&
+                    angleNorm <= startAngle + angle
+                ) {
+                    const normal = new THREE.Vector2(Math.cos(angleToB), Math.sin(angleToB));
+                    const dot    = ball.userData.direction.dot(normal);
+                    ball.userData.direction.sub(normal.clone().multiplyScalar(2 * dot)).normalize();
+                    ball.userData.direction.x += (Math.random() - 0.5) * 0.1;
+                    ball.userData.direction.y += (Math.random() - 0.5) * 0.1;
+                    ball.userData.direction.normalize();
+
                     if (ringIndex === currentRingIndex) {
-                        // Remove the ring section and ricochet the ball
                         scene.remove(section);
                         ringSections.splice(i, 1);
-
-                        // Calculate the reflection vector
-                        const normal = new THREE.Vector2(Math.cos(angleToBall), Math.sin(angleToBall)).normalize();
-                        const dotProduct = ball.userData.direction.dot(normal);
-                        ball.userData.direction.sub(normal.multiplyScalar(2 * dotProduct)).normalize();
-
-                        // Add some randomness to the ball direction
-                        ball.userData.direction.x += (Math.random() - 0.5) * 0.1;
-                        ball.userData.direction.y += (Math.random() - 0.5) * 0.1;
-                        ball.userData.direction.normalize();
-
-                        break;
-                    } else {
-                        // Bounce the ball off the section
-                        const normal = new THREE.Vector2(Math.cos(angleToBall), Math.sin(angleToBall)).normalize();
-                        const dotProduct = ball.userData.direction.dot(normal);
-                        ball.userData.direction.sub(normal.multiplyScalar(2 * dotProduct)).normalize();
-                        ball.userData.direction.x += (Math.random() - 0.5) * 0.1;
-                        ball.userData.direction.y += (Math.random() - 0.5) * 0.1;
-                        ball.userData.direction.normalize();
                     }
+                    break;
                 }
             }
         });
 
-        // Update currentRingIndex if the current ring is completely destroyed
         if (areAllSectionsDestroyed(currentRingIndex)) {
             currentRingIndex--;
-            balls.push(createBall())
+            balls.push(createBall(balls));
         }
     }
 
-    // Check for collisions between balls
     function checkBallCollisions() {
         for (let i = 0; i < balls.length; i++) {
             for (let j = i + 1; j < balls.length; j++) {
-                const ball1 = balls[i];
-                const ball2 = balls[j];
-                const pos1 = new THREE.Vector2(ball1.position.x, ball1.position.y);
-                const pos2 = new THREE.Vector2(ball2.position.x, ball2.position.y);
-                const distance = pos1.distanceTo(pos2);
-
-                if (distance <= ballRadius * 2) {
-                    // Simple elastic collision response
-                    const direction1 = ball1.userData.direction;
-                    const direction2 = ball2.userData.direction;
-                    ball1.userData.direction = direction2.clone().normalize();
-                    ball2.userData.direction = direction1.clone().normalize();
+                const b1  = balls[i], b2 = balls[j];
+                const p1  = new THREE.Vector2(b1.position.x, b1.position.y);
+                const p2  = new THREE.Vector2(b2.position.x, b2.position.y);
+                if (p1.distanceTo(p2) <= ballRadius * 2) {
+                    const d1 = b1.userData.direction.clone();
+                    b1.userData.direction.copy(b2.userData.direction).normalize();
+                    b2.userData.direction.copy(d1).normalize();
                 }
             }
         }
     }
 
-    // Pause simulation on space bar press
-    let isPaused = false;
-    window.addEventListener('keydown', function(event) {
-        if (event.code === 'Space') {
-            isPaused = !isPaused;
+    // ── Game init / restart ─────────────────────────────────────────────────
+    function clearScene() {
+        ringSections.forEach(s => scene.remove(s));
+        ringSections = [];
+        balls.forEach(b => scene.remove(b));
+        balls = [];
+    }
+
+    function restartGame() {
+        clearScene();
+        currentRingIndex = RING_COUNT - 1;
+        buildRings();
+        for (let i = 0; i < initialBalls; i++) {
+            balls.push(createBall(balls));
         }
+    }
+
+    restartGame();
+
+    // ── Keyboard ────────────────────────────────────────────────────────────
+    window.addEventListener('keydown', e => {
+        if (e.code === 'Space') { e.preventDefault(); isPaused = !isPaused; }
     });
 
-    // Render loop with frame rate limit
+    // ── Render loop ─────────────────────────────────────────────────────────
     let lastFrameTime = 0;
-    const frameRate = 60;
-    const frameDuration = 1000 / frameRate;
+    const frameDuration = 1000 / 60;
 
     function animate(timestamp) {
         requestAnimationFrame(animate);
-
-        if (isPaused) {
-            return;
-        }
-
-        if (timestamp - lastFrameTime < frameDuration) {
-            return;
-        }
+        if (isPaused) return;
+        if (timestamp - lastFrameTime < frameDuration) return;
         lastFrameTime = timestamp;
 
-        // Move the balls
         balls.forEach(ball => {
             ball.position.x += ball.userData.speed * ball.userData.direction.x;
             ball.position.y += ball.userData.speed * ball.userData.direction.y;
         });
 
-        // Check for collisions
         checkCollisions();
         checkBallCollisions();
 
-        // Bounce off the walls
         balls.forEach(ball => {
-            if (ball.position.x - ballRadius < initialWidth / -2 || ball.position.x + ballRadius > initialWidth / 2) {
+            if (ball.position.x - ballRadius < W / -2 || ball.position.x + ballRadius > W / 2)
                 ball.userData.direction.x *= -1;
-            }
-            if (ball.position.y - ballRadius < initialHeight / -2 || ball.position.y + ballRadius > initialHeight / 2) {
+            if (ball.position.y - ballRadius < H / -2 || ball.position.y + ballRadius > H / 2)
                 ball.userData.direction.y *= -1;
-            }
         });
 
         renderer.render(scene, camera);
