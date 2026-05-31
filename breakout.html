@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Breakout 3D</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Orbitron:wght@400;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a1a;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', monospace;
+    color: #e0e0e0;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #game-canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  #hud {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 32px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .hud-item {
+    text-align: center;
+  }
+
+  .hud-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #888;
+    margin-bottom: 2px;
+  }
+
+  .hud-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 12px rgba(255,120,50,0.5);
+  }
+
+  #autopilot-badge {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #4ade80;
+    background: rgba(74,222,128,0.08);
+    border: 1px solid rgba(74,222,128,0.2);
+    padding: 4px 16px;
+    border-radius: 20px;
+    z-index: 10;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+
+  #config-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 20;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #ccc;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    backdrop-filter: blur(8px);
+  }
+
+  #config-toggle:hover {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+  }
+
+  #config-panel {
+    position: fixed;
+    top: 0;
+    right: -340px;
+    width: 320px;
+    height: 100vh;
+    background: rgba(10, 10, 30, 0.95);
+    backdrop-filter: blur(20px);
+    border-left: 1px solid rgba(255,255,255,0.08);
+    z-index: 15;
+    padding: 24px;
+    overflow-y: auto;
+    transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  #config-panel.open { right: 0; }
+
+  .panel-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+    color: #fff;
+  }
+
+  .config-group {
+    margin-bottom: 20px;
+  }
+
+  .config-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #888;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .config-label span.val {
+    color: #4ade80;
+    font-weight: 700;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.1);
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #ff7832;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(255,120,50,0.5);
+  }
+
+  .toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .toggle-label {
+    font-size: 12px;
+    color: #bbb;
+  }
+
+  .toggle-switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+  }
+
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.1);
+    border-radius: 12px;
+    transition: background 0.2s;
+  }
+
+  .toggle-switch input:checked + .toggle-track {
+    background: rgba(74,222,128,0.3);
+  }
+
+  .toggle-knob {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: #666;
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+
+  .toggle-switch input:checked ~ .toggle-knob {
+    left: 23px;
+    background: #4ade80;
+    box-shadow: 0 0 6px rgba(74,222,128,0.5);
+  }
+
+  .btn-restart {
+    width: 100%;
+    padding: 12px;
+    margin-top: 16px;
+    background: linear-gradient(135deg, #ff7832, #ff5522);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-restart:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(255,120,50,0.4);
+  }
+
+  .separator {
+    height: 1px;
+    background: rgba(255,255,255,0.06);
+    margin: 16px 0;
+  }
+
+  #game-over-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5,5,20,0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 25;
+    backdrop-filter: blur(6px);
+  }
+
+  #game-over-overlay.show { display: flex; }
+
+  .go-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 42px;
+    font-weight: 900;
+    color: #ff7832;
+    text-shadow: 0 0 30px rgba(255,120,50,0.4);
+    margin-bottom: 10px;
+  }
+
+  .go-score {
+    font-size: 18px;
+    color: #aaa;
+    margin-bottom: 30px;
+  }
+
+  .go-btn {
+    padding: 14px 40px;
+    background: linear-gradient(135deg, #ff7832, #ff5522);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .go-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 24px rgba(255,120,50,0.5);
+  }
+
+  .go-countdown {
+    font-size: 13px;
+    color: #4ade80;
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+    animation: pulse-glow 1s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game-canvas"></canvas>
+
+<div id="hud">
+  <div class="hud-item">
+    <div class="hud-label">Score</div>
+    <div class="hud-value" id="score-val">0</div>
+  </div>
+  <div class="hud-item">
+    <div class="hud-label">Lives</div>
+    <div class="hud-value" id="lives-val">3</div>
+  </div>
+  <div class="hud-item">
+    <div class="hud-label">Level</div>
+    <div class="hud-value" id="level-val">1</div>
+  </div>
+</div>
+
+<div id="autopilot-badge">⚡ Demo Mode</div>
+
+<button id="config-toggle">⚙</button>
+
+<div id="config-panel">
+  <div class="panel-title">Settings</div>
+
+  <div class="toggle-row">
+    <span class="toggle-label">Demo Mode</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="cfg-autopilot" checked>
+      <div class="toggle-track"></div>
+      <div class="toggle-knob"></div>
+    </label>
+  </div>
+
+  <div class="separator"></div>
+
+  <div class="config-group">
+    <div class="config-label">Ball Speed <span class="val" id="v-speed">5</span></div>
+    <input type="range" id="cfg-speed" min="2" max="15" value="5" step="0.5">
+  </div>
+
+  <div class="config-group">
+    <div class="config-label">Paddle Width <span class="val" id="v-paddle">3</span></div>
+    <input type="range" id="cfg-paddle" min="1.5" max="6" value="3" step="0.25">
+  </div>
+
+  <div class="config-group">
+    <div class="config-label">Brick Columns <span class="val" id="v-cols">20</span></div>
+    <input type="range" id="cfg-cols" min="6" max="30" value="20" step="1">
+  </div>
+
+  <div class="config-group">
+    <div class="config-label">Brick Rows <span class="val" id="v-rows">14</span></div>
+    <input type="range" id="cfg-rows" min="3" max="20" value="14" step="1">
+  </div>
+
+  <div class="config-group">
+    <div class="config-label">Lives <span class="val" id="v-lives">3</span></div>
+    <input type="range" id="cfg-lives" min="1" max="10" value="3" step="1">
+  </div>
+
+  <div class="separator"></div>
+
+  <div class="toggle-row">
+    <span class="toggle-label">Camera Shake</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="cfg-shake" checked>
+      <div class="toggle-track"></div>
+      <div class="toggle-knob"></div>
+    </label>
+  </div>
+
+  <div class="toggle-row">
+    <span class="toggle-label">Glow Effects</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="cfg-glow" checked>
+      <div class="toggle-track"></div>
+      <div class="toggle-knob"></div>
+    </label>
+  </div>
+
+  <div class="separator"></div>
+
+  <button class="btn-restart" id="btn-restart">Restart Game</button>
+</div>
+
+<div id="game-over-overlay">
+  <div class="go-title" id="go-title">Game Over</div>
+  <div class="go-score" id="go-score">Score: 0</div>
+  <div class="go-countdown" id="go-countdown" style="display:none">Restarting in 5s...</div>
+  <button class="go-btn" id="go-restart">Play Again</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.min.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ─── CONFIG ───
+const CFG = {
+  speed: 5,
+  paddleW: 3,
+  cols: 20,
+  rows: 14,
+  lives: 3,
+  autopilot: true,
+  shake: true,
+  glow: true,
+};
+
+// ─── WORLD CONSTANTS ───
+const WORLD_W = 16;
+const WORLD_H = 22;
+const WALL_THICKNESS = 0.3;
+const BRICK_GAP = 0.08;
+const BALL_R = 0.18;
+const PADDLE_H = 0.35;
+const PADDLE_DEPTH = 0.4;
+const BRICK_H = 0.45;
+
+// ─── STATE ───
+let score = 0, lives = 0, level = 1;
+let ballVx = 0, ballVy = 0;
+let bricks = [];
+let brickMeshes = [];
+let particles = [];
+let shakeTime = 0;
+let gameRunning = true;
+let paddleTargetX = 0;
+let mouseControlActive = false;
+let demoRestartTimer = null;
+
+// ─── THREE SETUP ───
+const canvas = document.getElementById('game-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x0c0c24);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0c0c24, 0.03);
+
+const aspect = window.innerWidth / window.innerHeight;
+const camH = WORLD_H + 4;
+const camera = new THREE.OrthographicCamera(
+  -camH * aspect / 2, camH * aspect / 2,
+  camH / 2, -camH / 2, 0.1, 100
+);
+camera.position.set(0, 0, 30);
+camera.lookAt(0, 0, 0);
+
+// ─── LIGHTING ───
+const ambient = new THREE.AmbientLight(0x334466, 0.6);
+scene.add(ambient);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5, 10, 15);
+scene.add(dirLight);
+
+const pointLight = new THREE.PointLight(0xff7832, 0.6, 30);
+pointLight.position.set(0, -5, 10);
+scene.add(pointLight);
+
+// ─── MATERIALS ───
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x2a2a4a, roughness: 0.8 });
+const paddleMat = new THREE.MeshStandardMaterial({ color: 0xff7832, roughness: 0.3, metalness: 0.4, emissive: 0xff5500, emissiveIntensity: 0.2 });
+const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.6, roughness: 0.2 });
+
+function brickColor(row, totalRows) {
+  const t = row / (totalRows - 1);
+  if (t < 0.15) return { color: 0x4a5568, emissive: 0x2d3748, hp: 2 }; // gray top
+  if (t > 0.85) return { color: 0x4a5568, emissive: 0x2d3748, hp: 2 }; // gray bottom
+  const green = new THREE.Color().setHSL(0.38 - t * 0.08, 0.75, 0.45 + t * 0.12);
+  return { color: green.getHex(), emissive: new THREE.Color().setHSL(0.38, 0.6, 0.15).getHex(), hp: 1 };
+}
+
+// ─── BUILD WALLS ───
+function buildWalls() {
+  const topW = new THREE.Mesh(new THREE.BoxGeometry(WORLD_W + 2 * WALL_THICKNESS, WALL_THICKNESS, 1), wallMat);
+  topW.position.set(0, WORLD_H / 2 + WALL_THICKNESS / 2, 0);
+  scene.add(topW);
+
+  const leftW = new THREE.Mesh(new THREE.BoxGeometry(WALL_THICKNESS, WORLD_H + 2 * WALL_THICKNESS, 1), wallMat);
+  leftW.position.set(-WORLD_W / 2 - WALL_THICKNESS / 2, 0, 0);
+  scene.add(leftW);
+
+  const rightW = new THREE.Mesh(new THREE.BoxGeometry(WALL_THICKNESS, WORLD_H + 2 * WALL_THICKNESS, 1), wallMat);
+  rightW.position.set(WORLD_W / 2 + WALL_THICKNESS / 2, 0, 0);
+  scene.add(rightW);
+}
+buildWalls();
+
+// ─── PADDLE ───
+let paddleGeo = new THREE.BoxGeometry(CFG.paddleW, PADDLE_H, PADDLE_DEPTH);
+const paddle = new THREE.Mesh(paddleGeo, paddleMat);
+paddle.position.set(0, -WORLD_H / 2 + 1.2, 0);
+scene.add(paddle);
+
+// ─── BALL ───
+const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 16, 16), ballMat);
+scene.add(ball);
+
+// ball glow
+const glowGeo = new THREE.SphereGeometry(BALL_R * 2.5, 16, 16);
+const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08 });
+const ballGlow = new THREE.Mesh(glowGeo, glowMat);
+scene.add(ballGlow);
+
+// ─── BACKGROUND GRID ───
+const gridHelper = new THREE.GridHelper(40, 40, 0x1a1a3a, 0x1a1a3a);
+gridHelper.rotation.x = Math.PI / 2;
+gridHelper.position.z = -2;
+scene.add(gridHelper);
+
+// ─── BRICK CREATION ───
+function isInTCutout(r, c, rows, cols) {
+  // Define green zone boundaries (skip top/bottom gray rows)
+  const grayTop = Math.max(1, Math.round(rows * 0.12));
+  const grayBot = Math.max(1, Math.round(rows * 0.12));
+  const greenStart = grayTop;
+  const greenEnd = rows - grayBot - 1;
+  const greenRows = greenEnd - greenStart + 1;
+
+  // Only cut within green zone
+  if (r < greenStart || r > greenEnd) return false;
+
+  const localRow = r - greenStart; // row within green zone (0-based)
+
+  // T top bar: top ~35% of green zone, middle ~55% of columns
+  const barHeight = Math.max(2, Math.round(greenRows * 0.35));
+  const barMargin = Math.max(1, Math.round(cols * 0.22));
+
+  // T stem: below the bar, center ~25% of columns
+  const stemMargin = Math.max(1, Math.round(cols * 0.38));
+
+  if (localRow < barHeight) {
+    // Top bar region
+    return c >= barMargin && c < cols - barMargin;
+  } else {
+    // Stem region
+    return c >= stemMargin && c < cols - stemMargin;
+  }
+}
+
+function createBricks() {
+  brickMeshes.forEach(m => scene.remove(m));
+  brickMeshes = [];
+  bricks = [];
+
+  const cols = CFG.cols;
+  const rows = CFG.rows;
+  const totalW = WORLD_W - 1;
+  const brickW = (totalW - (cols - 1) * BRICK_GAP) / cols;
+  const brickSize = brickW; // square: height = width
+  const startX = -totalW / 2 + brickW / 2;
+  const startY = WORLD_H / 2 - 1.5;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      // Skip cells inside the T cutout
+      if (isInTCutout(r, c, rows, cols)) continue;
+
+      const info = brickColor(r, rows);
+      const mat = new THREE.MeshStandardMaterial({
+        color: info.color,
+        emissive: info.emissive,
+        emissiveIntensity: 0.3,
+        roughness: 0.5,
+        metalness: 0.1,
+      });
+      const pad = 0.04;
+      const geo = new THREE.BoxGeometry(brickSize - pad, brickSize - pad, 0.3);
+      const mesh = new THREE.Mesh(geo, mat);
+      const x = startX + c * (brickW + BRICK_GAP);
+      const y = startY - r * (brickSize + BRICK_GAP);
+      mesh.position.set(x, y, 0);
+      scene.add(mesh);
+      brickMeshes.push(mesh);
+      bricks.push({ mesh, x, y, w: brickSize, h: brickSize, alive: true, hp: info.hp, maxHp: info.hp });
+    }
+  }
+}
+
+// ─── PARTICLES ───
+const particleGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+
+function spawnParticles(x, y, color) {
+  const count = 12;
+  for (let i = 0; i < count; i++) {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 });
+    const p = new THREE.Mesh(particleGeo, mat);
+    p.position.set(x, y, 0);
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.5;
+    const speed = 2 + Math.random() * 4;
+    scene.add(p);
+    particles.push({
+      mesh: p,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: 0.02 + Math.random() * 0.02,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.life -= p.decay;
+    p.mesh.material.opacity = Math.max(0, p.life);
+    p.mesh.scale.setScalar(p.life);
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      p.mesh.material.dispose();
+      particles.splice(i, 1);
+    }
+  }
+}
+
+// ─── GAME INIT ───
+function resetBall() {
+  ball.position.set(0, paddle.position.y + 1.5, 0);
+  const angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.8;
+  ballVx = Math.cos(angle) * CFG.speed;
+  ballVy = Math.sin(angle) * CFG.speed;
+  if (ballVy > 0) ballVy = -ballVy;
+  ballVy = Math.abs(ballVy); // go up first
+}
+
+function initGame() {
+  if (demoRestartTimer) { clearInterval(demoRestartTimer); demoRestartTimer = null; }
+  document.getElementById('go-countdown').style.display = 'none';
+  score = 0;
+  lives = CFG.lives;
+  level = 1;
+  gameRunning = true;
+  updateHUD();
+  createBricks();
+  paddle.position.x = 0;
+  updatePaddleSize();
+  resetBall();
+  document.getElementById('game-over-overlay').classList.remove('show');
+}
+
+function updatePaddleSize() {
+  paddle.geometry.dispose();
+  paddle.geometry = new THREE.BoxGeometry(CFG.paddleW, PADDLE_H, PADDLE_DEPTH);
+}
+
+function updateHUD() {
+  document.getElementById('score-val').textContent = score;
+  document.getElementById('lives-val').textContent = lives;
+  document.getElementById('level-val').textContent = level;
+}
+
+// ─── COLLISION ───
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function ballBrickCollision(b) {
+  const bx = ball.position.x, by = ball.position.y;
+  const closestX = clamp(bx, b.x - b.w / 2, b.x + b.w / 2);
+  const closestY = clamp(by, b.y - b.h / 2, b.y + b.h / 2);
+  const dx = bx - closestX, dy = by - closestY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < BALL_R) {
+    // determine reflection axis
+    const overlapX = b.w / 2 + BALL_R - Math.abs(bx - b.x);
+    const overlapY = b.h / 2 + BALL_R - Math.abs(by - b.y);
+    if (overlapX < overlapY) {
+      ballVx = -ballVx;
+      ball.position.x += (bx > b.x ? 1 : -1) * (BALL_R - dist + 0.01);
+    } else {
+      ballVy = -ballVy;
+      ball.position.y += (by > b.y ? 1 : -1) * (BALL_R - dist + 0.01);
+    }
+    return true;
+  }
+  return false;
+}
+
+// ─── INPUT ───
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.key] = true; });
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+canvas.addEventListener('mousemove', e => {
+  if (!CFG.autopilot) {
+    const rect = canvas.getBoundingClientRect();
+    const nx = (e.clientX - rect.left) / rect.width;
+    paddleTargetX = (nx - 0.5) * WORLD_W;
+    mouseControlActive = true;
+  }
+});
+
+canvas.addEventListener('touchmove', e => {
+  if (!CFG.autopilot) {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const nx = (e.touches[0].clientX - rect.left) / rect.width;
+    paddleTargetX = (nx - 0.5) * WORLD_W;
+    mouseControlActive = true;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchstart', e => {
+  if (!CFG.autopilot) {
+    const rect = canvas.getBoundingClientRect();
+    const nx = (e.touches[0].clientX - rect.left) / rect.width;
+    paddleTargetX = (nx - 0.5) * WORLD_W;
+    mouseControlActive = true;
+  }
+}, { passive: false });
+
+// ─── MAIN LOOP ───
+const clock = new THREE.Clock();
+
+function gameLoop() {
+  requestAnimationFrame(gameLoop);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (!gameRunning) {
+    renderer.render(scene, camera);
+    updateParticles(dt);
+    return;
+  }
+
+  // ── Paddle control ──
+  const halfPW = CFG.paddleW / 2;
+  const maxPX = WORLD_W / 2 - halfPW;
+
+  if (CFG.autopilot) {
+    // track ball with slight prediction
+    const predictX = ball.position.x + ballVx * 0.3;
+    const diff = predictX - paddle.position.x;
+    paddle.position.x += diff * 8 * dt;
+  } else {
+    if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+      paddleTargetX = paddle.position.x - 12 * dt;
+      mouseControlActive = false;
+    }
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+      paddleTargetX = paddle.position.x + 12 * dt;
+      mouseControlActive = false;
+    }
+
+    if (mouseControlActive) {
+      paddle.position.x += (paddleTargetX - paddle.position.x) * 15 * dt;
+    } else {
+      paddle.position.x = paddleTargetX;
+    }
+  }
+  paddle.position.x = clamp(paddle.position.x, -maxPX, maxPX);
+
+  // ── Ball movement ──
+  ball.position.x += ballVx * dt;
+  ball.position.y += ballVy * dt;
+  ballGlow.position.copy(ball.position);
+  ballGlow.visible = CFG.glow;
+
+  // wall bounces
+  const wallL = -WORLD_W / 2 + BALL_R;
+  const wallR = WORLD_W / 2 - BALL_R;
+  const wallT = WORLD_H / 2 - BALL_R;
+
+  if (ball.position.x <= wallL) { ball.position.x = wallL; ballVx = Math.abs(ballVx); }
+  if (ball.position.x >= wallR) { ball.position.x = wallR; ballVx = -Math.abs(ballVx); }
+  if (ball.position.y >= wallT) { ball.position.y = wallT; ballVy = -Math.abs(ballVy); }
+
+  // paddle bounce
+  const py = paddle.position.y + PADDLE_H / 2;
+  if (ballVy < 0 && ball.position.y - BALL_R <= py && ball.position.y - BALL_R >= py - PADDLE_H &&
+      ball.position.x >= paddle.position.x - halfPW - BALL_R &&
+      ball.position.x <= paddle.position.x + halfPW + BALL_R) {
+    ball.position.y = py + BALL_R + 0.01;
+    const hitPos = (ball.position.x - paddle.position.x) / halfPW;
+    const angle = hitPos * Math.PI * 0.35 + Math.PI / 2;
+    const spd = Math.sqrt(ballVx * ballVx + ballVy * ballVy);
+    ballVx = Math.cos(angle) * spd * (hitPos >= 0 ? 1 : -1);
+    ballVy = Math.abs(Math.sin(angle) * spd);
+    if (CFG.shake) shakeTime = 0.08;
+  }
+
+  // ball out of bounds
+  if (ball.position.y < -WORLD_H / 2 - 1) {
+    lives--;
+    updateHUD();
+    if (lives <= 0) {
+      gameRunning = false;
+      document.getElementById('go-title').textContent = 'Game Over';
+      document.getElementById('go-score').textContent = `Score: ${score}`;
+      document.getElementById('game-over-overlay').classList.add('show');
+      // Auto-restart in demo mode after 5 seconds
+      if (CFG.autopilot) {
+        let countdown = 5;
+        const countdownEl = document.getElementById('go-countdown');
+        countdownEl.textContent = `Restarting in ${countdown}s...`;
+        countdownEl.style.display = 'block';
+        demoRestartTimer = setInterval(() => {
+          countdown--;
+          if (countdown <= 0) {
+            clearInterval(demoRestartTimer);
+            demoRestartTimer = null;
+            countdownEl.style.display = 'none';
+            initGame();
+          } else {
+            countdownEl.textContent = `Restarting in ${countdown}s...`;
+          }
+        }, 1000);
+      }
+    } else {
+      resetBall();
+    }
+  }
+
+  // ── Brick collisions ──
+  for (let i = 0; i < bricks.length; i++) {
+    const b = bricks[i];
+    if (!b.alive) continue;
+    if (ballBrickCollision(b)) {
+      b.hp--;
+      if (b.hp <= 0) {
+        b.alive = false;
+        b.mesh.visible = false;
+        score += b.maxHp * 10;
+        spawnParticles(b.x, b.y, b.mesh.material.color.getHex());
+        if (CFG.shake) shakeTime = 0.06;
+      } else {
+        // darken brick
+        b.mesh.material.color.multiplyScalar(0.7);
+        b.mesh.material.emissiveIntensity += 0.2;
+      }
+      updateHUD();
+      break; // one collision per frame
+    }
+  }
+
+  // check level clear
+  if (bricks.every(b => !b.alive)) {
+    level++;
+    CFG.speed += 0.5;
+    document.getElementById('cfg-speed').value = CFG.speed;
+    document.getElementById('v-speed').textContent = CFG.speed;
+    createBricks();
+    resetBall();
+    updateHUD();
+  }
+
+  // ── Camera shake ──
+  if (shakeTime > 0) {
+    shakeTime -= dt;
+    const intensity = shakeTime * 3;
+    camera.position.x = (Math.random() - 0.5) * intensity;
+    camera.position.y = (Math.random() - 0.5) * intensity;
+  } else {
+    camera.position.x = 0;
+    camera.position.y = 0;
+  }
+
+  // ── Point light follows ball ──
+  pointLight.position.x = ball.position.x;
+  pointLight.position.y = ball.position.y;
+
+  updateParticles(dt);
+  renderer.render(scene, camera);
+}
+
+// ─── RESIZE ───
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  const a = window.innerWidth / window.innerHeight;
+  camera.left = -camH * a / 2;
+  camera.right = camH * a / 2;
+  camera.updateProjectionMatrix();
+});
+
+// ─── UI BINDINGS ───
+document.getElementById('config-toggle').addEventListener('click', () => {
+  document.getElementById('config-panel').classList.toggle('open');
+});
+
+function bindSlider(id, valId, key, cb) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    const v = parseFloat(el.value);
+    CFG[key] = v;
+    document.getElementById(valId).textContent = v;
+    if (cb) cb(v);
+  });
+}
+
+bindSlider('cfg-speed', 'v-speed', 'speed', v => {
+  const spd = Math.sqrt(ballVx * ballVx + ballVy * ballVy);
+  if (spd > 0) { const r = v / spd; ballVx *= r; ballVy *= r; }
+});
+bindSlider('cfg-paddle', 'v-paddle', 'paddleW', () => updatePaddleSize());
+bindSlider('cfg-cols', 'v-cols', 'cols');
+bindSlider('cfg-rows', 'v-rows', 'rows');
+bindSlider('cfg-lives', 'v-lives', 'lives');
+
+document.getElementById('cfg-autopilot').addEventListener('change', e => {
+  CFG.autopilot = e.target.checked;
+  document.getElementById('autopilot-badge').style.opacity = CFG.autopilot ? '1' : '0';
+  mouseControlActive = false;
+  paddleTargetX = paddle.position.x;
+});
+
+document.getElementById('cfg-shake').addEventListener('change', e => { CFG.shake = e.target.checked; });
+document.getElementById('cfg-glow').addEventListener('change', e => { CFG.glow = e.target.checked; });
+
+document.getElementById('btn-restart').addEventListener('click', initGame);
+document.getElementById('go-restart').addEventListener('click', initGame);
+
+// ─── START ───
+initGame();
+gameLoop();
+</script>
+</body>
+</html>
